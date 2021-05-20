@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: issue21614-test
+  labels:
+    app: issue21614-test
+spec:
+  containers:
+    - name: issue21614-test
+      image: gradle:6.8.3-jdk11
+      ports:
+        - containerPort: 8080
+      command:
+        - /bin/bash
+        - '-ec'
+        - |
+          git clone https://github.com/denis111/azure-sdk-for-java-issue21614.git
+          cd azure-sdk-for-java-issue21614
+          gradle --no-daemon bootRun --args='--azure.storage.account-name=<account-name> --azure.storage.account-key=<account-key> --azure.storage.blob-endpoint=<blob-endpoint>'
+      readinessProbe:
+        httpGet:
+          path: /actuator/health/readiness
+          port: 8080
+      livenessProbe:
+        httpGet:
+          path: /actuator/health/liveness
+          port: 8080
+        initialDelaySeconds: 40
+        periodSeconds: 5
+        failureThreshold: 50

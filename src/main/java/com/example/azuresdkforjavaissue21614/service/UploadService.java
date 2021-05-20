@@ -12,11 +12,14 @@ import com.example.azuresdkforjavaissue21614.util.IoUtil;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
@@ -84,14 +87,14 @@ public class UploadService {
         }
       }
       long partSize = to + 1 - from;
-      String blockId = Base64.getEncoder().encodeToString((filename + from)
-          .getBytes(StandardCharsets.UTF_8));
+      String blockId = Base64.getEncoder().encodeToString(
+          concat(filename.getBytes(StandardCharsets.UTF_8), longToBytes(from)));
       blockBlobClient.stageBlockWithResponse(blockId,
           Utility.convertStreamToByteBuffer(is, partSize, BUFFER_SIZE, false), partSize,
           StringUtils.hasLength(md5) ? Base64.getDecoder().decode(md5) : null, null)
           .block();
       // last block
-      if (length - 1 == to) {
+      if (SIZE - 1 == to) {
         blockBlobClient.listBlocks(BlockListType.UNCOMMITTED)
             .blockOptional()
             .ifPresent(list -> blockBlobClient.commitBlockList(
@@ -125,6 +128,13 @@ public class UploadService {
         .getBlobUrl();
   }
 
+  @PostConstruct
+  protected void initContainer() {
+    this.blobContainerClient.exists().filter(e -> !e)
+        .flatMap(e -> this.blobContainerClient.create())
+        .block();
+  }
+
   private Resource getResource(String filename) {
     return resourceLoader.getResource("azure-blob://" + BUCKET + "/" + filename);
   }
@@ -149,5 +159,17 @@ public class UploadService {
     List<Block> blocks = new ArrayList<>(blockList.getCommittedBlocks());
     blocks.addAll(blockList.getUncommittedBlocks());
     return blocks;
+  }
+
+  private byte[] longToBytes(long x) {
+    ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+    buffer.putLong(x);
+    return buffer.array();
+  }
+
+  private static byte[] concat(byte[] first, byte[] second) {
+    byte[] result = Arrays.copyOf(first, first.length + second.length);
+    System.arraycopy(second, 0, result, first.length, second.length);
+    return result;
   }
 }
